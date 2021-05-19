@@ -45,7 +45,7 @@ namespace Sample.IncidentBot.IncidentStatus
         /// <param name="id">The incident id.</param>
         /// <param name="data">The incident data.</param>
         public IncidentStatusData(string id, IncidentRequestData data)
-            : this(id, data.Name, data.Time, data.ObjectIds)
+            : this(id, data.Name, data.Time, data.ObjectIds, data.TenantId)
         {
         }
 
@@ -56,7 +56,8 @@ namespace Sample.IncidentBot.IncidentStatus
         /// <param name="name">The incident name.</param>
         /// <param name="time">The time of incident.</param>
         /// <param name="objectIds">The responders' object IDs.</param>
-        private IncidentStatusData(string id, string name, DateTime time, IEnumerable<string> objectIds)
+        /// <param name="tenantId">TenantID of the users.</param>
+        private IncidentStatusData(string id, string name, DateTime time, IEnumerable<string> objectIds, string tenantId)
         {
             this.DataCreationTime = DateTime.UtcNow;
 
@@ -64,6 +65,8 @@ namespace Sample.IncidentBot.IncidentStatus
             this.Name = name;
             this.Time = time;
 
+            this.ObjectIds = objectIds;
+            this.TenantId = tenantId;
             this.responderStatusDictionary = new Dictionary<string, IncidentResponderStatusData>();
 
             foreach (var responderId in objectIds)
@@ -73,9 +76,29 @@ namespace Sample.IncidentBot.IncidentStatus
         }
 
         /// <summary>
+        /// Gets or sets the user object ids.
+        /// </summary>
+        public IEnumerable<string> ObjectIds { get; set; }
+
+        /// <summary>
+        /// Gets or sets the tenant id.
+        /// </summary>
+        public string TenantId { get; set; }
+
+        /// <summary>
         /// Gets the bot's meeting call id.
         /// </summary>
         public string BotMeetingCallId { get; private set; }
+
+        /// <summary>
+        /// Gets the bot's meeting call id.
+        /// </summary>
+        public int Count { get; private set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the call is attended or not.
+        /// </summary>
+        public bool IsAttended { get; set; }
 
         /// <summary>
         /// Gets the bot's meeting scenario identifier.
@@ -129,6 +152,14 @@ namespace Sample.IncidentBot.IncidentStatus
         }
 
         /// <summary>
+        /// Update the count.
+        /// </summary>
+        public void UpdateCount()
+        {
+            this.Count = ++this.Count;
+        }
+
+        /// <summary>
         /// Update the bot's meeting call id.
         /// </summary>
         /// <param name="callId">The call id.</param>
@@ -137,6 +168,7 @@ namespace Sample.IncidentBot.IncidentStatus
         {
             this.BotMeetingCallId = callId;
             this.BotMeetingScenarioId = scenarioId;
+            this.IsAttended = false;
         }
 
         /// <summary>

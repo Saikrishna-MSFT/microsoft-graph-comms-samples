@@ -12,9 +12,12 @@ namespace Sample.IncidentBot
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
     using Microsoft.Graph.Communications.Common.Telemetry;
     using Sample.Common.Logging;
     using Sample.IncidentBot.Bot;
+    using Sample.IncidentBot.Helpers;
+    using Sample.IncidentBot.Interface;
 
     /// <summary>
     /// Startup class.
@@ -33,7 +36,13 @@ namespace Sample.IncidentBot
             this.Configuration = configuration;
             this.logger = new GraphLogger(typeof(Startup).Assembly.GetName().Name);
             this.observer = new SampleObserver(this.logger);
+            StaticConfiguration = configuration;
         }
+
+        /// <summary>
+        /// Gets or sets the static configuration.
+        /// </summary>
+        public static IConfiguration StaticConfiguration { get; set; }
 
         /// <summary>
         /// Gets the configuration.
@@ -58,6 +67,14 @@ namespace Sample.IncidentBot
             services
                 .AddBot(options => this.Configuration.Bind("Bot", options))
                 .AddMvc();
+
+            services.AddCors(options =>
+            {
+                options.AddPolicy(
+                    "AllowAll",
+                    builder => builder.WithOrigins("*").AllowAnyHeader().AllowAnyMethod());
+            });
+            services.AddSingleton<IGraph, GraphHelper>();
         }
 
         /// <summary>
@@ -76,6 +93,8 @@ namespace Sample.IncidentBot
             }
 
             app.UseStaticFiles();
+
+            app.UseCors("AllowAll");
 
             app.UseMiddleware<CallAffinityMiddleware>();
 

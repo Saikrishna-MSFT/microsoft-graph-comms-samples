@@ -8,7 +8,10 @@ namespace IcMBot.Controllers
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
+    using Microsoft.AspNetCore.Cors;
     using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Extensions.Configuration;
+    using Microsoft.Graph;
     using Microsoft.Graph.Communications.Common;
     using Microsoft.Graph.Communications.Core.Serialization;
     using Sample.Common.Logging;
@@ -16,13 +19,17 @@ namespace IcMBot.Controllers
     using Sample.IncidentBot.Bot;
     using Sample.IncidentBot.Data;
     using Sample.IncidentBot.IncidentStatus;
+    using Sample.IncidentBot.Interface;
 
     /// <summary>
     /// The incidents controller class.
     /// </summary>
     [Route("[controller]")]
+    [EnableCors("AllowAll")]
     public class IncidentsController : Controller
     {
+        private readonly IConfiguration configuration;
+        private readonly IGraph graph;
         private Bot bot;
         private SampleObserver observer;
 
@@ -31,10 +38,55 @@ namespace IcMBot.Controllers
         /// </summary>
         /// <param name="bot">The bot.</param>
         /// <param name="observer">The log observer.</param>
-        public IncidentsController(Bot bot, SampleObserver observer)
+        /// <param name="configuration">IConfiguration instance.</param>
+        /// <param name="graph">IGraph instance.</param>
+        public IncidentsController(Bot bot, SampleObserver observer, IConfiguration configuration, IGraph graph)
         {
             this.bot = bot;
             this.observer = observer;
+            this.configuration = configuration;
+            this.graph = graph;
+        }
+
+        /// <summary>
+        /// Get the meeting url.
+        /// </summary>
+        /// <returns>Default content.</returns>
+        [HttpGet("/meetingUrl")]
+        public async Task<IActionResult> GetMeetingUrlAsync()
+        {
+            string meetingUrl = string.Empty;
+            var onlineMeeting = new OnlineMeeting()
+            {
+                Subject = "New meeting",
+                StartDateTime = DateTime.UtcNow,
+                EndDateTime = DateTime.UtcNow.AddMinutes(30),
+            };
+
+            var graphServiceClient = this.graph.GetGraphServiceClient();
+            var onlineMeetingResponse = await this.graph.CreateOnlineMeetingAsync(graphServiceClient, onlineMeeting).ConfigureAwait(false);
+
+            if (onlineMeetingResponse != null)
+            {
+                meetingUrl = onlineMeetingResponse.JoinWebUrl;
+                string[] usersIdsArray = this.configuration["UserIds"].Split(',');
+                List<string> usersIdsList = new List<string>(usersIdsArray);
+                IncidentRequestData incidentRequestData = new IncidentRequestData()
+                {
+                    Name = "ACSSample",
+                    Time = DateTime.UtcNow,
+                    TenantId = "c80f38d3-c04c-49bf-a48b-9d99278d4ac6",
+                    JoinURL = meetingUrl,
+                    ObjectIds = usersIdsList,
+                };
+
+                _ = Task.Run(async () =>
+                 {
+                     await this.PostIncidentAsync(incidentRequestData).ConfigureAwait(false);
+                 });
+            }
+
+            return this.Ok(meetingUrl);
         }
 
         /// <summary>
@@ -42,8 +94,8 @@ namespace IcMBot.Controllers
         /// </summary>
         /// <param name="incidentRequestData">The incident data.</param>
         /// <returns>The action result.</returns>
-        [HttpPost("raise")]
-        public async Task<IActionResult> PostIncidentAsync([FromBody] IncidentRequestData incidentRequestData)
+        // [HttpPost("raise")]
+        public async Task<IActionResult> PostIncidentAsync(IncidentRequestData incidentRequestData)
         {
             Validator.NotNull(incidentRequestData, nameof(incidentRequestData));
 

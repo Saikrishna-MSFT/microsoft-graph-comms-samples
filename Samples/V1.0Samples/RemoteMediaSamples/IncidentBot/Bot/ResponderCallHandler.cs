@@ -7,6 +7,7 @@ namespace Sample.IncidentBot.Bot
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Graph;
@@ -14,6 +15,7 @@ namespace Sample.IncidentBot.Bot
     using Microsoft.Graph.Communications.Common.Telemetry;
     using Microsoft.Graph.Communications.Resources;
     using Sample.IncidentBot.Data;
+    using Sample.IncidentBot.Helpers;
     using Sample.IncidentBot.IncidentStatus;
 
     /// <summary>
@@ -56,6 +58,7 @@ namespace Sample.IncidentBot.Bot
                 {
                     this.SubscribeToTone();
                     this.PlayNotificationPrompt();
+                    this.CheckTeamsMeetingParticipants();
                 }
 
                 if (sender.Resource.ToneInfo?.Tone != null)
@@ -68,6 +71,7 @@ namespace Sample.IncidentBot.Bot
                     switch (tone)
                     {
                         case Tone.Tone1:
+                            this.statusData.IsAttended = true;
                             this.PlayTransferingPrompt();
                             this.TransferToIncidentMeeting();
                             break;
@@ -79,6 +83,82 @@ namespace Sample.IncidentBot.Bot
 
                     sender.Resource.ToneInfo.Tone = null;
                 }
+            }
+
+            if (sender.Resource.State == CallState.Terminated && !this.statusData.IsAttended)
+            {
+                this.SubsequentCall();
+            }
+        }
+
+        /// <summary>
+        /// Validate the particiapnts info to confirm whether the user has accepted the call or not.
+        /// </summary>
+        private void CheckTeamsMeetingParticipants()
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    Thread.Sleep(20000);
+
+                    GraphServiceClient graphServiceClient = AuthenticationHelper.GetGraphServiceClient();
+
+                    var teamsMeetingparticipants = await graphServiceClient.Communications.Calls[this.statusData?.BotMeetingCallId].Participants
+                        .Request()
+                        .GetAsync()
+                        .ConfigureAwait(false);
+
+                    if (teamsMeetingparticipants.CurrentPage.Count == 1 && teamsMeetingparticipants.CurrentPage[0].Info.Identity.User == null)
+                    {
+                        var responderNotificationCallId = this.statusData.GetResponder(this.statusData.ObjectIds.ToList()[this.statusData.Count]).NotificationCallId;
+
+                        this.GraphLogger.Info("No answer from the user, Terminating the call!");
+                        await graphServiceClient.Communications.Calls[responderNotificationCallId]
+                            .Request()
+                            .DeleteAsync()
+                            .ConfigureAwait(false);
+                        this.statusData.UpdateCount();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    this.GraphLogger.Error(ex, ex.Message);
+                    throw;
+                }
+            });
+        }
+
+        /// <summary>
+        /// Subsequent call.
+        /// </summary>
+        private void SubsequentCall()
+        {
+            if (this.statusData.Count <= this.statusData.ObjectIds.Count() - 1)
+            {
+                var scenarioId = Guid.NewGuid();
+                var objectId = this.statusData.ObjectIds.ToList()[this.statusData.Count];
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        var makeCallRequestData =
+                             new MakeCallRequestData(
+                                 this.statusData.TenantId,
+                                 objectId,
+                                 "Application".Equals("User", StringComparison.OrdinalIgnoreCase));
+                        var responderCall = await this.Bot.MakeCallAsync(makeCallRequestData, scenarioId).ConfigureAwait(false);
+
+                        CallHandler callHandler;
+                        var callee = responderCall.Resource.Targets.First();
+                        callHandler = new ResponderCallHandler(this.Bot, responderCall, callee.Identity.User.Id, this.statusData);
+                        this.Bot.CallHandlers[responderCall.Id] = callHandler;
+                    }
+                    catch (Exception ex)
+                    {
+                        this.GraphLogger.Error(ex, $"Failed");
+                    }
+                });
             }
         }
 

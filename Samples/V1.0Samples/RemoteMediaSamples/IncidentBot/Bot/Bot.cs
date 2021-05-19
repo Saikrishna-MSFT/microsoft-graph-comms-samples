@@ -216,16 +216,14 @@ namespace Sample.IncidentBot.Bot
             // Rehydrates and validates the group call.
             botMeetingCall = await this.RehydrateAndValidateGroupCallAsync(this.Client, botMeetingCall).ConfigureAwait(false);
 
-            foreach (var objectId in incidentRequestData.ObjectIds)
-            {
-                var makeCallRequestData =
+            var objectId = incidentRequestData.ObjectIds.ToList()[incidentStatusData.Count];
+            var makeCallRequestData =
                     new MakeCallRequestData(
                         incidentRequestData.TenantId,
                         objectId,
                         "Application".Equals(incidentRequestData.ResponderType, StringComparison.OrdinalIgnoreCase));
-                var responderCall = await this.MakeCallAsync(makeCallRequestData, scenarioId).ConfigureAwait(false);
-                this.AddCallToHandlers(responderCall, new IncidentCallContext(IncidentCallType.ResponderNotification, incidentId));
-            }
+            var responderCall = await this.MakeCallAsync(makeCallRequestData, scenarioId).ConfigureAwait(false);
+            this.AddCallToHandlers(responderCall, new IncidentCallContext(IncidentCallType.ResponderNotification, incidentId));
 
             return botMeetingCall;
         }
